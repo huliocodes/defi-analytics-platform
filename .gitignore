@@ -31,3 +31,6 @@ Thumbs.db
 # Credentials
 *.json
 !example*.json
+
+# dlt
+.dlt/secrets.toml
