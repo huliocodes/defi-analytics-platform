@@ -2,6 +2,7 @@ SELECT
     id AS protocol_id,
     name AS protocol_name,
     slug,
+    gecko_id,
     category,
     chain,
     symbol,

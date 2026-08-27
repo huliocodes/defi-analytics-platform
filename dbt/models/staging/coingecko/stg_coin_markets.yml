@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_coin_markets
+    description: "Cleaned CoinGecko market-cap snapshot data."
+
+    columns:
+      - name: coin_id
+        description: "CoinGecko coin identifier."
+        data_tests:
+          - not_null
+
+      - name: coin_name
+        description: "Coin name."
+        data_tests:
+          - not_null
+
+      - name: market_cap
+        description: "Market capitalization in USD."
+        data_tests:
+          - not_null
+
+      - name: snapshot_at
+        description: "Hourly ingestion snapshot timestamp."
+        data_tests:
+          - not_null
