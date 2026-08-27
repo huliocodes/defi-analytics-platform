@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -8,59 +9,104 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+LOG_FILE = LOG_DIR / "pipeline.log"
+
+
 logging.basicConfig(
-    filename=LOG_DIR / "pipeline.log",
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 
 logger = logging.getLogger(__name__)
 
 
-def run(command):
+def run(command, step_name):
     command_str = " ".join(command)
 
-    print(f"\n>>> {command_str}")
-    logger.info("Starting: %s", command_str)
+    logger.info("START | %s | %s", step_name, command_str)
+
+    started_at = time.perf_counter()
 
     result = subprocess.run(
         command,
         cwd=PROJECT_ROOT,
+        text=True,
+        capture_output=True,
     )
+
+    duration = time.perf_counter() - started_at
 
     if result.returncode != 0:
         logger.error(
-            "Command failed with exit code %s: %s",
+            "FAILED | %s | exit_code=%s | duration=%.2fs",
+            step_name,
             result.returncode,
-            command_str,
+            duration,
         )
-        print(f"\nPipeline failed: {command_str}")
+
+        if result.stdout:
+            logger.error("STDOUT:\n%s", result.stdout)
+
+        if result.stderr:
+            logger.error("STDERR:\n%s", result.stderr)
+
         sys.exit(result.returncode)
 
-    logger.info("Completed successfully: %s", command_str)
+    logger.info(
+        "SUCCESS | %s | duration=%.2fs",
+        step_name,
+        duration,
+    )
 
 
-logger.info("========== PIPELINE START ==========")
+def main():
+    pipeline_started_at = time.perf_counter()
 
-run([
-    sys.executable,
-    "ingestion/defillama_pipeline.py",
-])
+    logger.info("=" * 60)
+    logger.info("PIPELINE START")
+    logger.info("=" * 60)
 
-run([
-    "dbt",
-    "run",
-    "--project-dir",
-    "dbt",
-])
+    run(
+        [
+            sys.executable,
+            "ingestion/defillama_pipeline.py",
+        ],
+        "defillama_ingestion",
+    )
 
-run([
-    "dbt",
-    "test",
-    "--project-dir",
-    "dbt",
-])
+    run(
+        [
+            "dbt",
+            "run",
+            "--project-dir",
+            "dbt",
+        ],
+        "dbt_run",
+    )
 
-logger.info("========== PIPELINE SUCCESS ==========")
+    run(
+        [
+            "dbt",
+            "test",
+            "--project-dir",
+            "dbt",
+        ],
+        "dbt_test",
+    )
 
-print("\nPipeline completed successfully.")
+    total_duration = time.perf_counter() - pipeline_started_at
+
+    logger.info("=" * 60)
+    logger.info(
+        "PIPELINE SUCCESS | total_duration=%.2fs",
+        total_duration,
+    )
+    logger.info("=" * 60)
+
+
+if __name__ == "__main__":
+    main()
