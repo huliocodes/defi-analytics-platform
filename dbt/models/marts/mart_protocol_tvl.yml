@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: mart_protocol_tvl
+    description: "Protocol-level TVL aggregated across chains for each snapshot."
+
+    columns:
+      - name: protocol_id
+        description: "Unique DefiLlama protocol identifier."
+        data_tests:
+          - not_null
+
+      - name: protocol_name
+        description: "Name of the DeFi protocol."
+        data_tests:
+          - not_null
+
+      - name: category
+        description: "DeFiLlama protocol category."
+
+      - name: total_tvl
+        description: "Total value locked in USD across all supported chains."
+        data_tests:
+          - not_null
+
+      - name: snapshot_at
+        description: "Timestamp of the source data snapshot."
+        data_tests:
+          - not_null

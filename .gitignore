@@ -28,9 +28,10 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Credentials
-*.json
-!example*.json
+# Credentials / secrets
+.dlt/secrets.toml
+*.secret
+*.credentials
 
 # dlt
-.dlt/secrets.toml
+.dlt/

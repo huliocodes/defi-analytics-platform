@@ -1,0 +1,29 @@
+version: 2
+
+sources:
+  - name: defillama
+    description: "Raw data ingested from the DefiLlama API using dlt."
+    schema: raw_defillama
+
+    tables:
+      - name: protocols
+        description: "Raw protocol-level data from DefiLlama."
+
+        columns:
+          - name: id
+            description: "DefiLlama protocol identifier."
+
+          - name: name
+            description: "Protocol name."
+
+          - name: slug
+            description: "URL-friendly protocol identifier."
+
+          - name: category
+            description: "Protocol category."
+
+          - name: tvl
+            description: "Total value locked in USD."
+
+          - name: snapshot_at
+            description: "Timestamp when the record was ingested."
