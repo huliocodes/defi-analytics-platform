@@ -9,7 +9,8 @@ URL = "https://api.llama.fi/protocols"
 
 @dlt.resource(
     name="protocols",
-    write_disposition="append",
+    write_disposition="merge",
+    primary_key=["id", "snapshot_at"],
 )
 def protocols():
     response = requests.get(URL, timeout=30)
@@ -17,7 +18,12 @@ def protocols():
 
     data = response.json()
 
-    snapshot_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    snapshot_at = now.replace(
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
 
     for protocol in data:
         protocol["snapshot_at"] = snapshot_at
