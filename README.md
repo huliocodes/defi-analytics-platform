@@ -2,7 +2,7 @@
 
 A data engineering project that ingests DeFi and crypto market data from multiple APIs, transforms it with dbt, validates data quality, and orchestrates the full pipeline with Prefect.
 
-The project is designed to demonstrate an end-to-end modern data engineering workflow using Python, PostgreSQL, dlt, dbt, Docker, and Prefect.
+The project demonstrates an end-to-end modern data engineering workflow using Python, PostgreSQL, dlt, dbt, Docker, Prefect, and Git.
 
 ## Architecture
 
@@ -17,10 +17,10 @@ CoinGecko API ─────┘        │
                             │
                             v
                            dbt
-                   Bronze / Staging
+                   Staging Models
                             │
                             v
-                       Intermediate
+                    Intermediate Models
                             │
                             v
                           Marts
@@ -28,7 +28,7 @@ CoinGecko API ─────┘        │
                             v
                        dbt Tests
 
-Prefect orchestrates the complete workflow.
+Prefect orchestrates and schedules the complete workflow.
 
 ```
 
@@ -60,14 +60,14 @@ The DeFiLlama pipeline ingests protocol-level DeFi data including:
 
 Each ingestion run creates an hourly snapshot.
 
-The pipeline uses a merge strategy with:
+The pipeline uses merge-based loading with the logical key:
 
 ```text
 protocol_id + snapshot_at
 
 ```
 
-as the logical snapshot grain, making same-hour reruns idempotent.
+This makes same-hour reruns idempotent.
 
 ### CoinGecko
 
@@ -78,7 +78,8 @@ The ingestion pipeline:
 - fetches up to 2,500 coins
 - uses API pagination
 - retrieves 250 coins per page
-- handles HTTP 429 rate limits with retry and exponential backoff
+- handles HTTP 429 rate limits
+- retries requests using exponential backoff
 - stores hourly snapshots
 - uses merge-based loading for idempotency
 
@@ -90,7 +91,7 @@ Only fields currently required by the project are ingested:
 - market cap
 - snapshot timestamp
 
-This keeps the raw ingestion aligned with the current data requirements.
+This keeps ingestion aligned with the current data requirements.
 
 ## Data Pipeline
 
@@ -208,6 +209,15 @@ protocol TVL / token market cap
 
 ```
 
+The mart grain is:
+
+```text
+one row per protocol per hourly snapshot
+
+```
+
+A custom dbt test validates this uniqueness assumption.
+
 ## Multi-Source Integration
 
 The project currently integrates two independent APIs:
@@ -219,9 +229,14 @@ CoinGecko
 
 ```
 
-DeFiLlama already exposes a `gecko_id`, which provides a reliable entity-resolution key for joining protocols to CoinGecko assets.
+DeFiLlama exposes a `gecko_id`, which provides a reliable entity-resolution key for joining protocols to CoinGecko assets.
 
-Initial CoinGecko ingestion included only the top 250 assets and matched 31 DeFiLlama protocols.
+Initial CoinGecko ingestion included only the top 250 assets and matched:
+
+```text
+31 protocols
+
+```
 
 After implementing pagination to ingest approximately 2,500 assets, the integration matched:
 
@@ -257,8 +272,14 @@ Current checks include:
 - coin names are not null
 - market caps are not null
 - snapshot timestamps are not null
+- protocol market-cap mart grain is unique by protocol and snapshot
 
-The project currently passes all configured dbt tests.
+The project currently passes:
+
+```text
+17 dbt tests
+
+```
 
 ## Idempotency
 
@@ -266,7 +287,7 @@ Both ingestion pipelines use hourly snapshots.
 
 Repeated ingestion within the same hour does not create duplicate logical snapshots because dlt uses merge-based loading with source identifiers and snapshot timestamps as keys.
 
-This makes local reruns and orchestration retries safe.
+This makes local reruns and Prefect retries safe.
 
 ## Rate Limit Handling
 
@@ -290,32 +311,123 @@ Example retry sequence:
 
 ```
 
-This allows pagination to continue without immediately failing the pipeline.
+This allows pagination to continue instead of immediately failing the pipeline.
 
 ## Orchestration
 
-Prefect orchestrates the complete data workflow.
+Prefect orchestrates the complete workflow.
 
 The current flow runs:
 
 ```text
-ingest_defillama
-        │
-        ├─────────────┐
-        │             │
-        │       ingest_coingecko
-        │             │
-        └──────┬──────┘
-               ↓
-            dbt run
-               ↓
-            dbt test
+ingest_defillama ──┐
+                   ├──> dbt run ──> dbt test
+ingest_coingecko ──┘
 
 ```
 
 Both API ingestion tasks must complete successfully before dbt transformations begin.
 
 The ingestion tasks also include Prefect retry behavior.
+
+## Scheduling
+
+The pipeline is scheduled locally using Prefect.
+
+The deployment is:
+
+```text
+defi-analytics-pipeline/hourly-defi-analytics
+
+```
+
+The cron schedule is:
+
+```text
+0 * * * *
+
+```
+
+This schedules the pipeline once per hour at the top of the hour.
+
+The scheduled deployment is served by:
+
+```text
+orchestration/serve.py
+
+```
+
+The local scheduling architecture is:
+
+```text
+Prefect Server
+      │
+      ↓
+Hourly Deployment
+      │
+      ↓
+Prefect Flow Runner
+      │
+      ↓
+DeFiLlama + CoinGecko ingestion
+      │
+      ↓
+dbt run
+      │
+      ↓
+dbt test
+
+```
+
+The hourly schedule has been validated with a fully automatic run.
+
+A scheduled run successfully executed:
+
+```text
+ingest_defillama → Completed
+ingest_coingecko → Completed
+dbt_run          → Completed
+dbt_test         → Completed
+flow run         → Completed
+
+```
+
+## Local Prefect Setup
+
+The local scheduled pipeline requires two long-running processes.
+
+### Prefect server
+
+In one terminal:
+
+```bash
+source .venv/Scripts/activate
+prefect server start
+
+```
+
+### Flow server
+
+In another terminal:
+
+```bash
+source .venv/Scripts/activate
+python orchestration/serve.py
+
+```
+
+The Prefect UI is available locally at:
+
+```text
+http://127.0.0.1:4200
+
+```
+
+A third terminal can be used normally for development commands such as Git, dbt, and PostgreSQL.
+
+Because scheduling is currently local, the PC, PostgreSQL, Prefect server, and flow server must be running for scheduled executions to occur.
+
+A future cloud deployment would remove this limitation.
 
 ## Running the Project Locally
 
@@ -342,24 +454,30 @@ docker compose ps
 
 ```
 
-### 3. Run the complete orchestrated pipeline
+### 3. Run the complete pipeline manually
 
 ```bash
 python orchestration/flows.py
 
 ```
 
-This runs:
+### 4. Run the scheduled deployment locally
 
-```text
-DeFiLlama ingestion
-CoinGecko ingestion
-dbt run
-dbt test
+Start the Prefect server:
+
+```bash
+prefect server start
 
 ```
 
-### 4. Run individual components
+Then, in another terminal:
+
+```bash
+python orchestration/serve.py
+
+```
+
+### 5. Run individual ingestion pipelines
 
 DeFiLlama:
 
@@ -375,21 +493,23 @@ python ingestion/coingecko_pipeline.py
 
 ```
 
-dbt models:
+### 6. Run dbt
+
+Models:
 
 ```bash
 dbt run --project-dir dbt
 
 ```
 
-dbt tests:
+Tests:
 
 ```bash
 dbt test --project-dir dbt
 
 ```
 
-### 5. Connect to PostgreSQL
+### 7. Connect to PostgreSQL
 
 ```bash
 docker exec -it defi-postgres psql -U defi_user -d defi_analytics
@@ -413,7 +533,8 @@ defi-analytics-platform/
 │   └── coingecko_pipeline.py
 │
 ├── orchestration/
-│   └── flows.py
+│   ├── flows.py
+│   └── serve.py
 │
 ├── scripts/
 │   └── run_pipeline.py
@@ -425,6 +546,9 @@ defi-analytics-platform/
 │   │   │   └── coingecko/
 │   │   ├── intermediate/
 │   │   └── marts/
+│   │
+│   ├── tests/
+│   │   └── assert_mart_protocol_market_cap_unique.sql
 │   │
 │   └── macros/
 │
@@ -454,19 +578,23 @@ Completed:
 - cross-source integration
 - protocol TVL + market-cap mart
 - data quality tests
+- custom mart-grain uniqueness test
 - pipeline logging
 - error handling
 - Prefect orchestration
+- Prefect deployment
+- hourly scheduled execution
+- successful automatic scheduled run
 - Git/GitHub version control
 
 Potential future improvements:
 
-- scheduled Prefect deployments
-- persistent Prefect server
+- persistent production Prefect deployment
 - cloud deployment
 - CI/CD
+- historical backfills
+- improved cross-source time alignment
+- pipeline monitoring and alerting
 - additional DeFi data sources
 - broader CoinGecko entity coverage
-- historical backfills
-- pipeline monitoring and alerting
 
