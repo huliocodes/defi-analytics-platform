@@ -4,7 +4,6 @@ from pathlib import Path
 
 from prefect import flow, task
 
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -32,6 +31,14 @@ def ingest_defillama():
     ])
 
 
+@task(retries=2, retry_delay_seconds=30)
+def ingest_coingecko():
+    run_command([
+        sys.executable,
+        "ingestion/coingecko_pipeline.py",
+    ])
+
+
 @task
 def dbt_run():
     run_command([
@@ -54,10 +61,11 @@ def dbt_test():
 
 @flow(name="defi-analytics-pipeline")
 def defi_analytics_flow():
-    ingestion = ingest_defillama()
+    defillama = ingest_defillama()
+    coingecko = ingest_coingecko()
 
     transformations = dbt_run(
-        wait_for=[ingestion]
+        wait_for=[defillama, coingecko]
     )
 
     dbt_test(

@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: mart_protocol_market_cap
+    description: "Protocol TVL combined with CoinGecko market capitalization."
+
+    columns:
+      - name: protocol_id
+        description: "DeFiLlama protocol identifier."
+        data_tests:
+          - not_null
+
+      - name: protocol_name
+        description: "Protocol name."
+        data_tests:
+          - not_null
+
+      - name: market_cap
+        description: "CoinGecko market capitalization in USD."
+        data_tests:
+          - not_null
+
+      - name: snapshot_at
+        description: "Hourly snapshot timestamp."
+        data_tests:
+          - not_null
